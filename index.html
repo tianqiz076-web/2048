@@ -242,11 +242,10 @@
   var HAMMERS = 3;
   var BEST_KEY = "best2048";
 
-  // 排行榜存储：当前为「本地模式」（每台浏览器各自记录）。
-  // 若要跨用户共享，把 submitScore / loadLeaderboard 换成远程后端即可。
+  // 排行榜存储：getpantry.cloud 共享后端（跨用户共享前 20 名）。
   var PLAYER_KEY = "player2048";
-  var LB_KEY = "lb2048";
   var TOP_N = 20;
+  var REMOTE_URL = "https://getpantry.cloud/apiv1/pantry/aaa8b7ff-7c89-4157-a193-223d554ef589/basket/game2048";
 
   var COLORS = {
     0:    { bg: "#cdc1b4", fg: "#cdc1b4" },
@@ -384,8 +383,20 @@
       showWin();
     } else if (isGameOver()) {
       gameOver = true;
-      var recorded = recordFinalScore();
-      showGameOver(recorded);
+      showGameOver();
+      var nm = getPlayerName();
+      if (nm) {
+        overlaySub.textContent = "分数提交中…";
+        submitScore(nm, score).then(function (ok) {
+          if (overlayShowing()) {
+            var sub = ok ? "分数已记录到排行榜！" : "分数提交失败，请稍后重试。";
+            if (hammerCount > 0) sub += " 点上方“锤子”再点一个方块，可消除它继续！";
+            overlaySub.textContent = sub;
+          }
+        });
+      } else if (overlayShowing()) {
+        overlaySub.textContent = "没有可移动的方块了。设置昵称后才会记录分数。";
+      }
     }
   }
 
@@ -485,11 +496,9 @@
   function showWin() {
     showOverlay("🎉 你赢了！", "已经合成 2048，继续挑战更大的数字吧", true);
   }
-  function showGameOver(recorded) {
-    var sub = recorded ? "分数已记录到排行榜！" : "设置昵称后才会记录分数。";
-    if (hammerCount > 0) {
-      sub += " 点上方“锤子”再点一个方块，可消除它继续！";
-    }
+  function showGameOver() {
+    var sub = "没有可移动的方块了。";
+    if (hammerCount > 0) sub += " 点上方“锤子”再点一个方块，可消除它继续！";
     showOverlay("游戏结束", sub, false);
   }
 
@@ -506,57 +515,61 @@
     playerNameBtn.title = n ? "点击修改昵称" : "点击设置昵称";
   }
 
-  function loadLeaderboard() {
-    try {
-      var arr = JSON.parse(localStorage.getItem(LB_KEY) || "[]");
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) { return []; }
-  }
-  function saveLeaderboard(entries) {
-    try { localStorage.setItem(LB_KEY, JSON.stringify(entries)); } catch (e) {}
+  // 从远程读取排行榜（返回 scores 数组）
+  function fetchScores() {
+    return fetch(REMOTE_URL, { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        return Array.isArray(data.scores) ? data.scores : [];
+      });
   }
 
-  // 提交分数：同名只保留最高分，排序后截取前 TOP_N 名
+  // 提交分数：读-改-写（同名只保留最高分，排序后截取前 TOP_N 名）
   function submitScore(name, scoreValue) {
-    if (!name || scoreValue <= 0) return false;
-    var entries = loadLeaderboard();
-    var changed = false;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].name === name) {
-        if (scoreValue > entries[i].score) {
-          entries[i].score = scoreValue;
-          entries[i].ts = Date.now();
-          changed = true;
+    if (!name || scoreValue <= 0) return Promise.resolve(false);
+    return fetchScores()
+      .then(function (entries) {
+        var changed = false;
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].name === name) {
+            if (scoreValue > entries[i].score) {
+              entries[i].score = scoreValue;
+              entries[i].ts = Date.now();
+              changed = true;
+            }
+            break;
+          }
         }
-        break;
-      }
-    }
-    if (!changed) {
-      entries.push({ name: name, score: scoreValue, ts: Date.now() });
-    }
-    entries.sort(function (a, b) { return b.score - a.score; });
-    entries = entries.slice(0, TOP_N);
-    saveLeaderboard(entries);
-    return true;
-  }
-
-  function recordFinalScore() {
-    var n = getPlayerName();
-    if (!n) return false;
-    return submitScore(n, score);
+        if (!changed) entries.push({ name: name, score: scoreValue, ts: Date.now() });
+        entries.sort(function (a, b) { return b.score - a.score; });
+        entries = entries.slice(0, TOP_N);
+        return fetch(REMOTE_URL, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scores: entries })
+        }).then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return true;
+        });
+      })
+      .catch(function () { return false; });
   }
 
   function renderLeaderboard() {
-    var entries = loadLeaderboard();
-    lbList.innerHTML = "";
-    if (!entries.length) {
-      var empty = document.createElement("div");
-      empty.className = "lb-empty";
-      empty.textContent = "还没有记录，快去玩一局吧！";
-      lbList.appendChild(empty);
-      return;
-    }
-    entries.forEach(function (e, i) {
+    lbList.innerHTML = '<div class="lb-empty">加载中…</div>';
+    fetchScores().then(function (entries) {
+      lbList.innerHTML = "";
+      if (!entries.length) {
+        var empty = document.createElement("div");
+        empty.className = "lb-empty";
+        empty.textContent = "还没有记录，快去玩一局吧！";
+        lbList.appendChild(empty);
+        return;
+      }
+      entries.forEach(function (e, i) {
       var row = document.createElement("div");
       row.className = "lb-row";
       var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
@@ -573,6 +586,9 @@
       row.appendChild(nameSpan);
       row.appendChild(scoreSpan);
       lbList.appendChild(row);
+      });
+    }).catch(function () {
+      lbList.innerHTML = '<div class="lb-empty">排行榜暂时加载失败，请稍后重试</div>';
     });
   }
 
