@@ -27,32 +27,38 @@
 
   header { width: 100%; margin-bottom: 12px; }
   .title-row {
-    display: flex; align-items: flex-end; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 12px;
   }
-  h1 { margin: 0; font-size: 52px; color: #776e65; line-height: 1; }
-  .newgame {
+  h1 { margin: 0; font-size: 48px; color: #776e65; line-height: 1; }
+  .actions { display: flex; gap: 8px; }
+  .actions button {
     border: none; border-radius: 6px; background: #8f7a66; color: #fff;
-    font-size: 15px; font-weight: bold; padding: 10px 20px; cursor: pointer;
+    font-size: 14px; font-weight: bold; padding: 10px 14px; cursor: pointer;
   }
-  .newgame:hover { background: #7f6a56; }
+  .actions button:hover { background: #7f6a56; }
+  .actions button.primary { background: #f67c5f; }
+  .actions button.primary:hover { background: #e05c46; }
 
   .scores { display: flex; gap: 8px; width: 100%; }
   .box {
-    background: #bbada0; border-radius: 6px; padding: 6px 12px;
+    background: #bbada0; border-radius: 6px; padding: 6px 8px;
     display: flex; flex-direction: column; align-items: center;
     flex: 1; min-width: 0;
   }
   .box .label { font-size: 12px; color: #eee4da; font-weight: bold; }
-  .box .value { font-size: 24px; color: #fff; font-weight: bold; line-height: 1.1; }
+  .box .value { font-size: 22px; color: #fff; font-weight: bold; line-height: 1.15; }
   .box button {
     margin-top: 2px; border: none; border-radius: 4px; background: #8f7a66;
-    color: #fff; font-size: 14px; font-weight: bold; padding: 5px 8px;
-    cursor: pointer; width: 100%;
+    color: #fff; font-size: 13px; font-weight: bold; padding: 6px 6px;
+    cursor: pointer; width: 100%; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
   }
   .box button:hover:not(.disabled) { background: #7f6a56; }
   .box button.active { background: #f67c5f; }
   .box button.disabled { background: #8f7a66; color: #cdc1b4; cursor: not-allowed; }
+  .box button.player { background: #6f5f4e; font-size: 13px; }
+  .box button.player:hover { background: #5f4f3e; }
 
   .how { margin: 0 0 10px; font-size: 14px; color: #776e65; }
   .how strong { color: #f67c5f; }
@@ -114,6 +120,44 @@
 
   .hint { font-size: 13px; color: #776e65; margin-top: 14px; text-align: center; }
   .hint.warn { color: #f65e3b; font-weight: bold; }
+
+  /* ---- 弹窗（昵称 / 排行榜） ---- */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: none; align-items: center; justify-content: center;
+    z-index: 10; padding: 20px;
+  }
+  .modal {
+    background: #faf8ef; border-radius: 12px; padding: 22px;
+    width: 100%; max-width: 360px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  }
+  .modal h2 { margin: 0 0 6px; font-size: 22px; color: #776e65; }
+  .modal .sub { margin: 0 0 14px; font-size: 13px; color: #a89f92; }
+  .modal input {
+    width: 100%; padding: 10px 12px; font-size: 16px; border: 2px solid #cdc1b4;
+    border-radius: 6px; outline: none; color: #776e65; background: #fff;
+  }
+  .modal input:focus { border-color: #f67c5f; }
+  .modal .btns { display: flex; gap: 10px; margin-top: 16px; }
+  .modal .btns button {
+    flex: 1; border: none; border-radius: 6px; padding: 10px; font-size: 15px;
+    font-weight: bold; cursor: pointer;
+  }
+  .modal .btns .ok { background: #f67c5f; color: #fff; }
+  .modal .btns .ok:hover { background: #e05c46; }
+  .modal .btns .cancel { background: #bbada0; color: #fff; }
+  .modal .btns .cancel:hover { background: #a89f92; }
+
+  .lb-list { max-height: 46vh; overflow-y: auto; margin-top: 4px; }
+  .lb-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 6px;
+    border-bottom: 1px solid #eee4da;
+  }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-rank { width: 34px; text-align: center; font-size: 16px; font-weight: bold; color: #776e65; }
+  .lb-name { flex: 1; font-size: 16px; color: #776e65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-score { font-size: 18px; font-weight: bold; color: #f67c5f; }
+  .lb-empty { text-align: center; color: #a89f92; padding: 20px 0; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -121,7 +165,10 @@
   <header>
     <div class="title-row">
       <h1>2048</h1>
-      <button class="newgame" id="new-game">新游戏</button>
+      <div class="actions">
+        <button id="new-game">新游戏</button>
+        <button id="lb-btn" class="primary">🏆 排行榜</button>
+      </div>
     </div>
     <div class="scores">
       <div class="box">
@@ -135,6 +182,10 @@
       <div class="box">
         <span class="label">道具</span>
         <button id="hammer">锤子 ×3</button>
+      </div>
+      <div class="box">
+        <span class="label">玩家</span>
+        <button id="player-name" class="player" title="点击设置昵称">未命名</button>
       </div>
     </div>
   </header>
@@ -156,6 +207,31 @@
   <p class="hint" id="hint"></p>
 </div>
 
+<!-- 昵称弹窗 -->
+<div class="modal-mask" id="name-modal">
+  <div class="modal">
+    <h2>注册昵称</h2>
+    <p class="sub">不需要密码，输入一个名字即可开始记录你的分数</p>
+    <input id="name-input" type="text" maxlength="12" placeholder="输入昵称（最多 12 字）">
+    <div class="btns">
+      <button class="cancel" id="name-skip">跳过</button>
+      <button class="ok" id="name-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 排行榜弹窗 -->
+<div class="modal-mask" id="lb-modal">
+  <div class="modal">
+    <h2>🏆 排行榜</h2>
+    <p class="sub">前 20 名（同一昵称只保留最高分）</p>
+    <div class="lb-list" id="lb-list"></div>
+    <div class="btns">
+      <button class="ok" id="lb-close">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
@@ -165,6 +241,12 @@
   var WIN_VALUE = 2048;
   var HAMMERS = 3;
   var BEST_KEY = "best2048";
+
+  // 排行榜存储：当前为「本地模式」（每台浏览器各自记录）。
+  // 若要跨用户共享，把 submitScore / loadLeaderboard 换成远程后端即可。
+  var PLAYER_KEY = "player2048";
+  var LB_KEY = "lb2048";
+  var TOP_N = 20;
 
   var COLORS = {
     0:    { bg: "#cdc1b4", fg: "#cdc1b4" },
@@ -193,6 +275,16 @@
   var overlayRestart  = document.getElementById("overlay-restart");
   var overlayContinue = document.getElementById("overlay-continue");
   var newGameBtn = document.getElementById("new-game");
+
+  var playerNameBtn = document.getElementById("player-name");
+  var lbBtn = document.getElementById("lb-btn");
+  var nameModal = document.getElementById("name-modal");
+  var nameInput = document.getElementById("name-input");
+  var nameOk = document.getElementById("name-ok");
+  var nameSkip = document.getElementById("name-skip");
+  var lbModal = document.getElementById("lb-modal");
+  var lbList = document.getElementById("lb-list");
+  var lbClose = document.getElementById("lb-close");
 
   var board, score, best, hammerCount, hammerActive, won, gameOver;
 
@@ -292,7 +384,8 @@
       showWin();
     } else if (isGameOver()) {
       gameOver = true;
-      showGameOver();
+      var recorded = recordFinalScore();
+      showGameOver(recorded);
     }
   }
 
@@ -392,16 +485,116 @@
   function showWin() {
     showOverlay("🎉 你赢了！", "已经合成 2048，继续挑战更大的数字吧", true);
   }
-  function showGameOver() {
-    showOverlay(
-      "游戏结束",
-      hammerCount > 0
-        ? "没有可移动的方块了。点上方“锤子”再点一个方块，可消除它继续！"
-        : "没有可移动的方块了。",
-      false
-    );
+  function showGameOver(recorded) {
+    var sub = recorded ? "分数已记录到排行榜！" : "设置昵称后才会记录分数。";
+    if (hammerCount > 0) {
+      sub += " 点上方“锤子”再点一个方块，可消除它继续！";
+    }
+    showOverlay("游戏结束", sub, false);
   }
 
+  // ================= 昵称 + 排行榜（本地） =================
+  function getPlayerName() {
+    try { return localStorage.getItem(PLAYER_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setPlayerName(name) {
+    try { localStorage.setItem(PLAYER_KEY, name); } catch (e) {}
+  }
+  function updatePlayerDisplay() {
+    var n = getPlayerName();
+    playerNameBtn.textContent = n ? n : "未命名";
+    playerNameBtn.title = n ? "点击修改昵称" : "点击设置昵称";
+  }
+
+  function loadLeaderboard() {
+    try {
+      var arr = JSON.parse(localStorage.getItem(LB_KEY) || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function saveLeaderboard(entries) {
+    try { localStorage.setItem(LB_KEY, JSON.stringify(entries)); } catch (e) {}
+  }
+
+  // 提交分数：同名只保留最高分，排序后截取前 TOP_N 名
+  function submitScore(name, scoreValue) {
+    if (!name || scoreValue <= 0) return false;
+    var entries = loadLeaderboard();
+    var changed = false;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].name === name) {
+        if (scoreValue > entries[i].score) {
+          entries[i].score = scoreValue;
+          entries[i].ts = Date.now();
+          changed = true;
+        }
+        break;
+      }
+    }
+    if (!changed) {
+      entries.push({ name: name, score: scoreValue, ts: Date.now() });
+    }
+    entries.sort(function (a, b) { return b.score - a.score; });
+    entries = entries.slice(0, TOP_N);
+    saveLeaderboard(entries);
+    return true;
+  }
+
+  function recordFinalScore() {
+    var n = getPlayerName();
+    if (!n) return false;
+    return submitScore(n, score);
+  }
+
+  function renderLeaderboard() {
+    var entries = loadLeaderboard();
+    lbList.innerHTML = "";
+    if (!entries.length) {
+      var empty = document.createElement("div");
+      empty.className = "lb-empty";
+      empty.textContent = "还没有记录，快去玩一局吧！";
+      lbList.appendChild(empty);
+      return;
+    }
+    entries.forEach(function (e, i) {
+      var row = document.createElement("div");
+      row.className = "lb-row";
+      var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
+      var rank = document.createElement("span");
+      rank.className = "lb-rank";
+      rank.textContent = medal;
+      var nameSpan = document.createElement("span");
+      nameSpan.className = "lb-name";
+      nameSpan.textContent = e.name;
+      var scoreSpan = document.createElement("span");
+      scoreSpan.className = "lb-score";
+      scoreSpan.textContent = e.score;
+      row.appendChild(rank);
+      row.appendChild(nameSpan);
+      row.appendChild(scoreSpan);
+      lbList.appendChild(row);
+    });
+  }
+
+  // ---- 弹窗 ----
+  function showNameModal() {
+    nameInput.value = getPlayerName();
+    nameModal.style.display = "flex";
+    setTimeout(function () { nameInput.focus(); }, 50);
+  }
+  function hideNameModal() { nameModal.style.display = "none"; }
+  function confirmName() {
+    var n = nameInput.value.trim().slice(0, 12);
+    if (n) { setPlayerName(n); updatePlayerDisplay(); }
+    hideNameModal();
+  }
+  function showLeaderboard() {
+    renderLeaderboard();
+    lbModal.style.display = "flex";
+  }
+  function hideLeaderboard() { lbModal.style.display = "none"; }
+
+  // ================= 输入绑定 =================
   document.addEventListener("keydown", function (e) {
     var k = e.key;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(k) !== -1) {
@@ -434,7 +627,27 @@
   overlayRestart.addEventListener("click", reset);
   overlayContinue.addEventListener("click", hideOverlay);
 
+  playerNameBtn.addEventListener("click", showNameModal);
+  lbBtn.addEventListener("click", showLeaderboard);
+  lbClose.addEventListener("click", hideLeaderboard);
+  nameOk.addEventListener("click", confirmName);
+  nameSkip.addEventListener("click", hideNameModal);
+  nameInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); confirmName(); }
+  });
+  lbModal.addEventListener("click", function (e) {
+    if (e.target === lbModal) hideLeaderboard();
+  });
+  nameModal.addEventListener("click", function (e) {
+    if (e.target === nameModal) hideNameModal();
+  });
+
+  // 首次进入：没有昵称时弹窗提醒
+  updatePlayerDisplay();
   reset();
+  if (!getPlayerName()) {
+    setTimeout(showNameModal, 300);
+  }
 })();
 </script>
 </body>
