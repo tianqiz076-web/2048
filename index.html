@@ -523,33 +523,40 @@
         return res.json();
       })
       .then(function (data) {
-        return Array.isArray(data.scores) ? data.scores : [];
+        var scores = data && data.scores;
+        var arr = [];
+        if (Array.isArray(scores)) {
+          scores.forEach(function (e) {
+            if (e && e.name) arr.push({ name: e.name, score: e.score || 0, ts: e.ts || 0 });
+          });
+        } else if (scores && typeof scores === "object") {
+          for (var k in scores) {
+            if (Object.prototype.hasOwnProperty.call(scores, k)) {
+              var v = scores[k];
+              arr.push({ name: k, score: (v && v.score) || 0, ts: (v && v.ts) || 0 });
+            }
+          }
+        }
+        return arr;
       });
   }
 
-  // 提交分数：读-改-写（同名只保留最高分，排序后截取前 TOP_N 名）
+  // 提交分数：若该昵称已有更高/相等分则跳过；否则按昵称 upsert 到远程
   function submitScore(name, scoreValue) {
     if (!name || scoreValue <= 0) return Promise.resolve(false);
     return fetchScores()
       .then(function (entries) {
-        var changed = false;
         for (var i = 0; i < entries.length; i++) {
-          if (entries[i].name === name) {
-            if (scoreValue > entries[i].score) {
-              entries[i].score = scoreValue;
-              entries[i].ts = Date.now();
-              changed = true;
-            }
-            break;
+          if (entries[i].name === name && entries[i].score >= scoreValue) {
+            return true; // 已有更高/相等分，无需写入
           }
         }
-        if (!changed) entries.push({ name: name, score: scoreValue, ts: Date.now() });
-        entries.sort(function (a, b) { return b.score - a.score; });
-        entries = entries.slice(0, TOP_N);
+        var body = { scores: {} };
+        body.scores[name] = { score: scoreValue, ts: Date.now() };
         return fetch(REMOTE_URL, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scores: entries })
+          body: JSON.stringify(body)
         }).then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
           return true;
@@ -561,31 +568,38 @@
   function renderLeaderboard() {
     lbList.innerHTML = '<div class="lb-empty">加载中…</div>';
     fetchScores().then(function (entries) {
+      entries.sort(function (a, b) { return b.score - a.score; });
+      var seen = {};
+      var unique = [];
+      for (var i = 0; i < entries.length; i++) {
+        if (!seen[entries[i].name]) { seen[entries[i].name] = true; unique.push(entries[i]); }
+      }
+      unique = unique.slice(0, TOP_N);
       lbList.innerHTML = "";
-      if (!entries.length) {
+      if (!unique.length) {
         var empty = document.createElement("div");
         empty.className = "lb-empty";
         empty.textContent = "还没有记录，快去玩一局吧！";
         lbList.appendChild(empty);
         return;
       }
-      entries.forEach(function (e, i) {
-      var row = document.createElement("div");
-      row.className = "lb-row";
-      var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
-      var rank = document.createElement("span");
-      rank.className = "lb-rank";
-      rank.textContent = medal;
-      var nameSpan = document.createElement("span");
-      nameSpan.className = "lb-name";
-      nameSpan.textContent = e.name;
-      var scoreSpan = document.createElement("span");
-      scoreSpan.className = "lb-score";
-      scoreSpan.textContent = e.score;
-      row.appendChild(rank);
-      row.appendChild(nameSpan);
-      row.appendChild(scoreSpan);
-      lbList.appendChild(row);
+      unique.forEach(function (e, i) {
+        var row = document.createElement("div");
+        row.className = "lb-row";
+        var medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : (i + 1);
+        var rank = document.createElement("span");
+        rank.className = "lb-rank";
+        rank.textContent = medal;
+        var nameSpan = document.createElement("span");
+        nameSpan.className = "lb-name";
+        nameSpan.textContent = e.name;
+        var scoreSpan = document.createElement("span");
+        scoreSpan.className = "lb-score";
+        scoreSpan.textContent = e.score;
+        row.appendChild(rank);
+        row.appendChild(nameSpan);
+        row.appendChild(scoreSpan);
+        lbList.appendChild(row);
       });
     }).catch(function () {
       lbList.innerHTML = '<div class="lb-empty">排行榜暂时加载失败，请稍后重试</div>';
