@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#faf8ef">
+<title>2048 · 锤子版</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+    background: #faf8ef;
+    color: #776e65;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    overscroll-behavior: contain;
+  }
+  .game { width: 100%; max-width: 480px; display: flex; flex-direction: column; }
+
+  header { width: 100%; margin-bottom: 12px; }
+  .title-row {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  h1 { margin: 0; font-size: 52px; color: #776e65; line-height: 1; }
+  .newgame {
+    border: none; border-radius: 6px; background: #8f7a66; color: #fff;
+    font-size: 15px; font-weight: bold; padding: 10px 20px; cursor: pointer;
+  }
+  .newgame:hover { background: #7f6a56; }
+
+  .scores { display: flex; gap: 8px; width: 100%; }
+  .box {
+    background: #bbada0; border-radius: 6px; padding: 6px 12px;
+    display: flex; flex-direction: column; align-items: center;
+    flex: 1; min-width: 0;
+  }
+  .box .label { font-size: 12px; color: #eee4da; font-weight: bold; }
+  .box .value { font-size: 24px; color: #fff; font-weight: bold; line-height: 1.1; }
+  .box button {
+    margin-top: 2px; border: none; border-radius: 4px; background: #8f7a66;
+    color: #fff; font-size: 14px; font-weight: bold; padding: 5px 8px;
+    cursor: pointer; width: 100%;
+  }
+  .box button:hover:not(.disabled) { background: #7f6a56; }
+  .box button.active { background: #f67c5f; }
+  .box button.disabled { background: #8f7a66; color: #cdc1b4; cursor: not-allowed; }
+
+  .how { margin: 0 0 10px; font-size: 14px; color: #776e65; }
+  .how strong { color: #f67c5f; }
+
+  .board-wrap { position: relative; width: 100%; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 12px;
+    background: #bbada0;
+    border-radius: 8px;
+    padding: 12px;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    touch-action: none;
+  }
+  .cell {
+    background: #cdc1b4;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; color: #776e65;
+    font-size: clamp(24px, 9vw, 48px);
+    transition: background 0.12s ease;
+  }
+  .cell.sz-m { font-size: clamp(18px, 7vw, 36px); }
+  .cell.sz-s { font-size: clamp(14px, 5.5vw, 28px); }
+
+  @keyframes pop {
+    0% { transform: scale(0); }
+    70% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  .cell.tile-new { animation: pop 0.18s ease-out; }
+
+  .board.targeting .cell { cursor: pointer; }
+  .board.targeting .cell:hover { outline: 2px solid #f67c5f; outline-offset: -2px; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(238, 228, 218, 0.74);
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 2;
+    text-align: center;
+    padding: 20px;
+  }
+  .overlay-title { font-size: 34px; font-weight: bold; color: #776e65; }
+  .overlay-sub { font-size: 15px; color: #776e65; margin: 8px 0 14px; }
+  .overlay button {
+    pointer-events: auto;
+    border: none; border-radius: 6px; background: #8f7a66; color: #fff;
+    font-size: 16px; font-weight: bold; padding: 10px 22px; margin: 4px;
+    cursor: pointer;
+  }
+  .overlay button:hover { background: #7f6a56; }
+
+  .hint { font-size: 13px; color: #776e65; margin-top: 14px; text-align: center; }
+  .hint.warn { color: #f65e3b; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="game">
+  <header>
+    <div class="title-row">
+      <h1>2048</h1>
+      <button class="newgame" id="new-game">新游戏</button>
+    </div>
+    <div class="scores">
+      <div class="box">
+        <span class="label">分数</span>
+        <span class="value" id="score">0</span>
+      </div>
+      <div class="box">
+        <span class="label">最高</span>
+        <span class="value" id="best">0</span>
+      </div>
+      <div class="box">
+        <span class="label">道具</span>
+        <button id="hammer">锤子 ×3</button>
+      </div>
+    </div>
+  </header>
+
+  <p class="how">合并相同数字，凑出 <strong>2048</strong>！</p>
+
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+    <div class="overlay" id="overlay">
+      <div class="overlay-title" id="overlay-title"></div>
+      <div class="overlay-sub" id="overlay-sub"></div>
+      <div>
+        <button id="overlay-restart">再来一局</button>
+        <button id="overlay-continue">继续游戏</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint" id="hint"></p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SIZE = 4;
+  var START_TILES = 2;
+  var WIN_VALUE = 2048;
+  var HAMMERS = 3;
+  var BEST_KEY = "best2048";
+
+  var COLORS = {
+    0:    { bg: "#cdc1b4", fg: "#cdc1b4" },
+    2:    { bg: "#eee4da", fg: "#776e65" },
+    4:    { bg: "#ede0c8", fg: "#776e65" },
+    8:    { bg: "#f2b179", fg: "#f9f6f2" },
+    16:   { bg: "#f59563", fg: "#f9f6f2" },
+    32:   { bg: "#f67c5f", fg: "#f9f6f2" },
+    64:   { bg: "#f65e3b", fg: "#f9f6f2" },
+    128:  { bg: "#edcf72", fg: "#f9f6f2" },
+    256:  { bg: "#edcc61", fg: "#f9f6f2" },
+    512:  { bg: "#edc850", fg: "#f9f6f2" },
+    1024: { bg: "#edc53f", fg: "#f9f6f2" },
+    2048: { bg: "#edc22e", fg: "#f9f6f2" }
+  };
+  var BIG = { bg: "#3c3a32", fg: "#f9f6f2" };
+
+  var boardEl   = document.getElementById("board");
+  var scoreEl   = document.getElementById("score");
+  var bestEl    = document.getElementById("best");
+  var hammerBtn = document.getElementById("hammer");
+  var hintEl    = document.getElementById("hint");
+  var overlayEl = document.getElementById("overlay");
+  var overlayTitle  = document.getElementById("overlay-title");
+  var overlaySub    = document.getElementById("overlay-sub");
+  var overlayRestart  = document.getElementById("overlay-restart");
+  var overlayContinue = document.getElementById("overlay-continue");
+  var newGameBtn = document.getElementById("new-game");
+
+  var board, score, best, hammerCount, hammerActive, won, gameOver;
+
+  best = parseInt(localStorage.getItem(BEST_KEY) || "0", 10) || 0;
+
+  function reset() {
+    board = Array.from({ length: SIZE }, function () { return Array(SIZE).fill(0); });
+    score = 0;
+    hammerCount = HAMMERS;
+    hammerActive = false;
+    won = false;
+    gameOver = false;
+    hideOverlay();
+    for (var i = 0; i < START_TILES; i++) spawn();
+    render();
+    updateScores();
+    updateHammer();
+    updateHint();
+  }
+
+  function spawn() {
+    var empty = [];
+    for (var r = 0; r < SIZE; r++)
+      for (var c = 0; c < SIZE; c++)
+        if (board[r][c] === 0) empty.push([r, c]);
+    if (!empty.length) return null;
+    var pos = empty[Math.floor(Math.random() * empty.length)];
+    board[pos[0]][pos[1]] = Math.random() < 0.1 ? 4 : 2;
+    return pos;
+  }
+
+  function slide(row) {
+    var line = row.filter(function (v) { return v !== 0; });
+    var gained = 0;
+    for (var i = 0; i < line.length - 1; i++) {
+      if (line[i] === line[i + 1]) {
+        line[i] *= 2;
+        gained += line[i];
+        line.splice(i + 1, 1);
+      }
+    }
+    while (line.length < SIZE) line.push(0);
+    return { line: line, gained: gained };
+  }
+
+  function move(direction) {
+    if (gameOver || overlayShowing()) return;
+    var before = board.map(function (r) { return r.slice(); });
+    var gained = 0;
+
+    if (direction === "left") {
+      for (var r = 0; r < SIZE; r++) {
+        var res = slide(board[r]);
+        board[r] = res.line; gained += res.gained;
+      }
+    } else if (direction === "right") {
+      for (var r2 = 0; r2 < SIZE; r2++) {
+        var res2 = slide(board[r2].slice().reverse());
+        board[r2] = res2.line.reverse(); gained += res2.gained;
+      }
+    } else if (direction === "up") {
+      for (var c = 0; c < SIZE; c++) {
+        var col = [board[0][c], board[1][c], board[2][c], board[3][c]];
+        var res3 = slide(col);
+        gained += res3.gained;
+        for (var r3 = 0; r3 < SIZE; r3++) board[r3][c] = res3.line[r3];
+      }
+    } else if (direction === "down") {
+      for (var c2 = 0; c2 < SIZE; c2++) {
+        var col2 = [board[3][c2], board[2][c2], board[1][c2], board[0][c2]];
+        var res4 = slide(col2);
+        gained += res4.gained;
+        for (var r4 = 0; r4 < SIZE; r4++) board[3 - r4][c2] = res4.line[r4];
+      }
+    } else {
+      return;
+    }
+
+    if (JSON.stringify(before) === JSON.stringify(board)) return;
+
+    score += gained;
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+    }
+    if (hammerActive) {
+      hammerActive = false;
+      updateHammer();
+      updateHint();
+    }
+    var spawnedCell = spawn();
+    render(spawnedCell);
+    updateScores();
+
+    if (!won && board.some(function (r) { return r.indexOf(WIN_VALUE) !== -1; })) {
+      won = true;
+      showWin();
+    } else if (isGameOver()) {
+      gameOver = true;
+      showGameOver();
+    }
+  }
+
+  function isGameOver() {
+    for (var r = 0; r < SIZE; r++)
+      for (var c = 0; c < SIZE; c++) {
+        if (board[r][c] === 0) return false;
+        if (c + 1 < SIZE && board[r][c] === board[r][c + 1]) return false;
+        if (r + 1 < SIZE && board[r][c] === board[r + 1][c]) return false;
+      }
+    return true;
+  }
+
+  function render(spawnedCell) {
+    boardEl.innerHTML = "";
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var v = board[r][c];
+        var cell = document.createElement("div");
+        cell.className = "cell";
+        cell.setAttribute("data-r", r);
+        cell.setAttribute("data-c", c);
+        if (v) {
+          cell.textContent = v;
+          var col = COLORS[v] || BIG;
+          cell.style.background = col.bg;
+          cell.style.color = col.fg;
+          if (v >= 1000) cell.classList.add("sz-s");
+          else if (v >= 100) cell.classList.add("sz-m");
+        }
+        if (spawnedCell && spawnedCell[0] === r && spawnedCell[1] === c) {
+          cell.classList.add("tile-new");
+        }
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function updateScores() {
+    scoreEl.textContent = score;
+    bestEl.textContent = best;
+  }
+
+  function updateHammer() {
+    hammerBtn.classList.toggle("active", hammerActive && hammerCount > 0);
+    hammerBtn.disabled = hammerCount <= 0;
+    hammerBtn.classList.toggle("disabled", hammerCount <= 0);
+    hammerBtn.textContent = "锤子 ×" + hammerCount;
+    boardEl.classList.toggle("targeting", hammerActive && hammerCount > 0);
+  }
+
+  function updateHint() {
+    if (hammerActive) {
+      hintEl.textContent = "已拿起锤子：点击棋盘上的方块将其消除（再点“锤子”取消）";
+      hintEl.classList.add("warn");
+    } else {
+      hintEl.textContent = "方向键 / WASD 移动 · 手机可滑动 · R 重开 · 锤子：消除一个方块";
+      hintEl.classList.remove("warn");
+    }
+  }
+
+  function toggleHammer() {
+    if (hammerCount <= 0) return;
+    hammerActive = !hammerActive;
+    updateHammer();
+    updateHint();
+  }
+
+  boardEl.addEventListener("click", function (e) {
+    var cell = e.target.closest ? e.target.closest(".cell") : null;
+    if (!cell || !hammerActive || hammerCount <= 0) return;
+    var r = +cell.getAttribute("data-r");
+    var c = +cell.getAttribute("data-c");
+    if (board[r][c] === 0) return;
+    board[r][c] = 0;
+    hammerCount--;
+    hammerActive = false;
+    gameOver = false;
+    hideOverlay();
+    render();
+    updateHammer();
+    updateHint();
+  });
+
+  function overlayShowing() {
+    return overlayEl.style.display !== "none";
+  }
+  function showOverlay(title, sub, showContinue) {
+    overlayTitle.textContent = title;
+    overlaySub.textContent = sub;
+    overlayContinue.style.display = showContinue ? "" : "none";
+    overlayEl.style.display = "flex";
+  }
+  function hideOverlay() {
+    overlayEl.style.display = "none";
+  }
+  function showWin() {
+    showOverlay("🎉 你赢了！", "已经合成 2048，继续挑战更大的数字吧", true);
+  }
+  function showGameOver() {
+    showOverlay(
+      "游戏结束",
+      hammerCount > 0
+        ? "没有可移动的方块了。点上方“锤子”再点一个方块，可消除它继续！"
+        : "没有可移动的方块了。",
+      false
+    );
+  }
+
+  document.addEventListener("keydown", function (e) {
+    var k = e.key;
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(k) !== -1) {
+      e.preventDefault();
+      move(k.replace("Arrow", "").toLowerCase());
+    } else if (k === "w" || k === "W") move("up");
+    else if (k === "s" || k === "S") move("down");
+    else if (k === "a" || k === "A") move("left");
+    else if (k === "d" || k === "D") move("right");
+    else if (k === "r" || k === "R") reset();
+  });
+
+  var touchX = null, touchY = null;
+  document.addEventListener("touchstart", function (e) {
+    touchX = e.touches[0].clientX;
+    touchY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX;
+    var dy = e.changedTouches[0].clientY - touchY;
+    touchX = touchY = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
+    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? "right" : "left");
+    else move(dy > 0 ? "down" : "up");
+  }, { passive: true });
+
+  hammerBtn.addEventListener("click", toggleHammer);
+  newGameBtn.addEventListener("click", reset);
+  overlayRestart.addEventListener("click", reset);
+  overlayContinue.addEventListener("click", hideOverlay);
+
+  reset();
+})();
+</script>
+</body>
+</html>
