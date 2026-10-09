@@ -475,6 +475,14 @@
     hammerCount--;
     hammerActive = false;
     gameOver = false;
+    // 防止棋盘被清空后卡死：空棋盘无法靠移动刷出新方块，这里自动补一个
+    var hasTile = false;
+    for (var rr = 0; rr < SIZE && !hasTile; rr++) {
+      for (var cc = 0; cc < SIZE; cc++) {
+        if (board[rr][cc] !== 0) { hasTile = true; break; }
+      }
+    }
+    if (!hasTile) spawn();
     hideOverlay();
     render();
     updateHammer();
